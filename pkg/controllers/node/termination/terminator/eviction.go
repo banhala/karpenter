@@ -223,12 +223,12 @@ func (q *Queue) Reconcile(ctx context.Context, pod *corev1.Pod) (reconcile.Resul
 func evictionReason(ctx context.Context, pod *corev1.Pod, kubeClient client.Client) string {
 	node, err := podutils.NodeForPod(ctx, kubeClient, pod)
 	if err != nil {
-		log.FromContext(ctx)Error(err, "pod has no node, failed looking up pod eviction reason")
+		log.FromContext(ctx).Error(err, "pod has no node, failed looking up pod eviction reason")
 		return ""
 	}
 	nodeClaim, err := nodeutils.NodeClaimForNode(ctx, kubeClient, node)
 	if err != nil {
-		log.FromContext(ctx)Error(err, "node has no nodeclaim, failed looking up pod eviction reason")
+		log.FromContext(ctx).Error(err, "node has no nodeclaim, failed looking up pod eviction reason")
 		return ""
 	}
 	if cond := nodeClaim.StatusConditions().Get(v1.ConditionTypeDisruptionReason); cond.IsTrue() {
