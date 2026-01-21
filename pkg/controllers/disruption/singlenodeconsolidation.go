@@ -54,7 +54,12 @@ func NewSingleNodeConsolidation(c consolidation, opts ...option.Function[MethodO
 // ComputeCommand generates a disruption command given candidates
 // nolint:gocyclo
 func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruptionBudgetMapping map[string]int, candidates ...*Candidate) (Command, error) {
+	log.FromContext(ctx).V(1).Info("SingleNodeConsolidation.ComputeCommand started",
+		"totalCandidates", len(candidates),
+		"budgetMapping", disruptionBudgetMapping)
+
 	if s.IsConsolidated() {
+		log.FromContext(ctx).V(1).Info("SingleNodeConsolidation: already consolidated, skipping")
 		return Command{}, nil
 	}
 	candidates = s.SortCandidates(ctx, candidates)
@@ -88,8 +93,17 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 		// assume that it was due to budgets. If we don't filter out budgets, users who set a budget for `empty`
 		// can find their nodes disrupted here.
 		if len(candidate.reschedulablePods) == 0 {
+			log.FromContext(ctx).V(1).Info("SingleNodeConsolidation: skipping empty candidate",
+				"candidate", candidate.Name())
 			continue
 		}
+
+		log.FromContext(ctx).V(1).Info("SingleNodeConsolidation: evaluating candidate",
+			"index", i,
+			"candidate", candidate.Name(),
+			"instanceType", candidate.instanceType.Name,
+			"pods", len(candidate.reschedulablePods),
+			"disruptionCost", candidate.DisruptionCost)
 
 		// compute a possible consolidation option
 		cmd, err := s.computeConsolidation(ctx, candidate)
@@ -98,8 +112,15 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 			continue
 		}
 		if cmd.Decision() == NoOpDecision {
+			log.FromContext(ctx).V(1).Info("SingleNodeConsolidation: NoOp decision for candidate",
+				"candidate", candidate.Name())
 			continue
 		}
+
+		log.FromContext(ctx).V(1).Info("SingleNodeConsolidation: found consolidation option",
+			"candidate", candidate.Name(),
+			"decision", cmd.Decision(),
+			"replacements", len(cmd.Replacements))
 		if _, err = s.validator.Validate(ctx, cmd, consolidationTTL); err != nil {
 			if IsValidationError(err) {
 				log.FromContext(ctx).V(1).WithValues(cmd.LogValues()...).Info("abandoning single-node consolidation attempt due to pod churn, command is no longer valid")
