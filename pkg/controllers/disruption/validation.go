@@ -223,7 +223,7 @@ func (e *EmptinessValidator) validateCandidates(ctx context.Context, candidates 
 // If these conditions are met for all candidates, ValidateCandidates returns a slice with the updated representations.
 func (c *ConsolidationValidator) validateCandidates(ctx context.Context, candidates ...*Candidate) ([]*Candidate, error) {
 	candidateNames := lo.Map(candidates, func(cn *Candidate, _ int) string { return cn.Name() })
-	log.FromContext(ctx).V(1).Info("validateCandidates started",
+	log.FromContext(ctx).Info("validateCandidates started",
 		"validationType", c.validationType,
 		"candidateCount", len(candidates),
 		"candidateNames", candidateNames)
@@ -277,7 +277,7 @@ func (c *ConsolidationValidator) validateCandidates(ctx context.Context, candida
 		}
 		disruptionBudgetMapping[vc.NodePool.Name]--
 	}
-	log.FromContext(ctx).V(1).Info("validateCandidates passed", "validationType", c.validationType, "validatedCount", len(validatedCandidates))
+	log.FromContext(ctx).Info("validateCandidates passed", "validationType", c.validationType, "validatedCount", len(validatedCandidates))
 	return validatedCandidates, nil
 }
 

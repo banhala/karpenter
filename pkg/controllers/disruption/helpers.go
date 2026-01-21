@@ -60,7 +60,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 	})
 
 	// Verbose logging for simulation debugging
-	log.FromContext(ctx).V(1).Info("SimulateScheduling started",
+	log.FromContext(ctx).Info("SimulateScheduling started",
 		"candidateCount", len(candidates),
 		"candidateNames", candidateNames.UnsortedList(),
 		"totalNodes", len(nodes),
@@ -81,7 +81,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 	if err != nil {
 		return scheduling.Results{}, fmt.Errorf("determining pending pods, %w", err)
 	}
-	log.FromContext(ctx).V(1).Info("GetPendingPods completed", "pendingPodCount", len(pods))
+	log.FromContext(ctx).Info("GetPendingPods completed", "pendingPodCount", len(pods))
 
 	// Don't provision capacity for pods which will not get evicted due to fully blocking PDBs.
 	// Since Karpenter doesn't know when these pods will be successfully evicted, spinning up capacity until
@@ -94,7 +94,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		currentlyReschedulablePods := lo.Filter(n.reschedulablePods, func(p *corev1.Pod, _ int) bool {
 			return pdbs.IsCurrentlyReschedulable(p)
 		})
-		log.FromContext(ctx).V(1).Info("Candidate pods to reschedule",
+		log.FromContext(ctx).Info("Candidate pods to reschedule",
 			"candidate", n.Name(),
 			"totalPods", len(n.reschedulablePods),
 			"reschedulablePods", len(currentlyReschedulablePods))
@@ -127,7 +127,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		return client.ObjectKeyFromObject(p), nil
 	})
 
-	log.FromContext(ctx).V(1).Info("Running scheduler.Solve",
+	log.FromContext(ctx).Info("Running scheduler.Solve",
 		"totalPodsToSchedule", len(pods),
 		"availableNodes", len(stateNodes))
 
@@ -137,7 +137,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 	}
 	results = results.TruncateInstanceTypes(ctx, scheduling.MaxInstanceTypes)
 
-	log.FromContext(ctx).V(1).Info("Scheduler.Solve completed",
+	log.FromContext(ctx).Info("Scheduler.Solve completed",
 		"newNodeClaimsNeeded", len(results.NewNodeClaims),
 		"existingNodesUsed", len(results.ExistingNodes),
 		"podErrors", len(results.PodErrors))

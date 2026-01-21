@@ -133,7 +133,7 @@ func (c *consolidation) sortCandidates(candidates []*Candidate) []*Candidate {
 // nolint:gocyclo
 func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...*Candidate) (Command, error) {
 	candidateNames := lo.Map(candidates, func(cn *Candidate, _ int) string { return cn.Name() })
-	log.FromContext(ctx).V(1).Info("computeConsolidation started",
+	log.FromContext(ctx).Info("computeConsolidation started",
 		"candidateCount", len(candidates),
 		"candidates", candidateNames)
 
@@ -150,7 +150,7 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 
 	// if not all of the pods were scheduled, we can't do anything
 	if !results.AllNonPendingPodsScheduled() {
-		log.FromContext(ctx).V(1).Info("computeConsolidation: not all pods scheduled",
+		log.FromContext(ctx).Info("computeConsolidation: not all pods scheduled",
 			"podErrors", len(results.PodErrors),
 			"errorSummary", results.NonPendingPodSchedulingErrors())
 		// This method is used by multi-node consolidation as well, so we'll only report in the single node case
@@ -162,7 +162,7 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 
 	// were we able to schedule all the pods on the inflight candidates?
 	if len(results.NewNodeClaims) == 0 {
-		log.FromContext(ctx).V(1).Info("computeConsolidation: DELETE decision (no new nodes needed)",
+		log.FromContext(ctx).Info("computeConsolidation: DELETE decision (no new nodes needed)",
 			"candidateCount", len(candidates))
 		return Command{
 			Candidates: candidates,
@@ -172,7 +172,7 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 
 	// we're not going to turn a single node into multiple candidates
 	if len(results.NewNodeClaims) != 1 {
-		log.FromContext(ctx).V(1).Info("computeConsolidation: cannot consolidate (would create multiple nodes)",
+		log.FromContext(ctx).Info("computeConsolidation: cannot consolidate (would create multiple nodes)",
 			"newNodeClaimsNeeded", len(results.NewNodeClaims))
 		if len(candidates) == 1 {
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, fmt.Sprintf("Can't remove without creating %d candidates", len(results.NewNodeClaims)))...)
@@ -215,7 +215,7 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 		return Command{}, nil
 	}
 	if len(results.NewNodeClaims[0].InstanceTypeOptions) == 0 {
-		log.FromContext(ctx).V(1).Info("computeConsolidation: no cheaper replacement found",
+		log.FromContext(ctx).Info("computeConsolidation: no cheaper replacement found",
 			"candidatePrice", candidatePrice)
 		if len(candidates) == 1 {
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, "Can't replace with a cheaper node")...)
@@ -238,7 +238,7 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 	if len(replacementOptions) > 5 {
 		replacementOptions = replacementOptions[:5]
 	}
-	log.FromContext(ctx).V(1).Info("computeConsolidation: REPLACE decision",
+	log.FromContext(ctx).Info("computeConsolidation: REPLACE decision",
 		"candidateCount", len(candidates),
 		"candidatePrice", candidatePrice,
 		"replacementOptions", replacementOptions,

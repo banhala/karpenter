@@ -168,7 +168,7 @@ func (q *Queue) Reconcile(ctx context.Context, nodeClaim *v1.NodeClaim) (reconci
 		// Log the error
 		log.FromContext(ctx).Error(multiErr, "failed terminating nodes while executing a disruption command")
 	} else {
-		log.FromContext(ctx).V(1).Info("command succeeded")
+		log.FromContext(ctx).Info("command succeeded")
 		cmd.Succeeded = true
 	}
 	q.CompleteCommand(cmd)
