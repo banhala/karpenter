@@ -95,6 +95,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 			return pdbs.IsCurrentlyReschedulable(p)
 		})
 		log.FromContext(ctx).Info("Candidate pods to reschedule",
+			"nodePool", n.NodePool.Name,
 			"candidate", n.Name(),
 			"totalPods", len(n.reschedulablePods),
 			"reschedulablePods", len(currentlyReschedulablePods))

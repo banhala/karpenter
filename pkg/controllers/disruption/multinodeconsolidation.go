@@ -97,8 +97,9 @@ func (m *MultiNodeConsolidation) ComputeCommand(ctx context.Context, disruptionB
 
 	// Log candidate details
 	for i, c := range disruptableCandidates {
-		if i < 10 { // Only log first 10 to avoid spam
+		if i < 20 { // Only log first 20 to avoid spam
 			log.FromContext(ctx).Info("MultiNodeConsolidation candidate",
+				"nodePool", c.NodePool.Name,
 				"index", i,
 				"node", c.Name(),
 				"instanceType", c.instanceType.Name,
@@ -106,9 +107,9 @@ func (m *MultiNodeConsolidation) ComputeCommand(ctx context.Context, disruptionB
 				"disruptionCost", c.DisruptionCost)
 		}
 	}
-	if len(disruptableCandidates) > 10 {
+	if len(disruptableCandidates) > 20 {
 		log.FromContext(ctx).Info("MultiNodeConsolidation: ... and more candidates",
-			"remaining", len(disruptableCandidates)-10)
+			"remaining", len(disruptableCandidates)-20)
 	}
 
 	cmd, err := m.firstNConsolidationOption(ctx, disruptableCandidates, maxParallel)

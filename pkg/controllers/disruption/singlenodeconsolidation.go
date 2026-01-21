@@ -94,11 +94,13 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 		// can find their nodes disrupted here.
 		if len(candidate.reschedulablePods) == 0 {
 			log.FromContext(ctx).Info("SingleNodeConsolidation: skipping empty candidate",
+				"nodePool", candidate.NodePool.Name,
 				"candidate", candidate.Name())
 			continue
 		}
 
 		log.FromContext(ctx).Info("SingleNodeConsolidation: evaluating candidate",
+			"nodePool", candidate.NodePool.Name,
 			"index", i,
 			"candidate", candidate.Name(),
 			"instanceType", candidate.instanceType.Name,
@@ -113,11 +115,13 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 		}
 		if cmd.Decision() == NoOpDecision {
 			log.FromContext(ctx).Info("SingleNodeConsolidation: NoOp decision for candidate",
+				"nodePool", candidate.NodePool.Name,
 				"candidate", candidate.Name())
 			continue
 		}
 
 		log.FromContext(ctx).Info("SingleNodeConsolidation: found consolidation option",
+			"nodePool", candidate.NodePool.Name,
 			"candidate", candidate.Name(),
 			"decision", cmd.Decision(),
 			"replacements", len(cmd.Replacements))
