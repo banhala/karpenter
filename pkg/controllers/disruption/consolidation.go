@@ -132,9 +132,18 @@ func (c *consolidation) sortCandidates(candidates []*Candidate) []*Candidate {
 //
 // nolint:gocyclo
 func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...*Candidate) (Command, error) {
+	// Build NodePool summary
+	nodePoolCounts := make(map[string]int)
+	for _, cn := range candidates {
+		nodePoolCounts[cn.NodePool.Name]++
+	}
+	nodePoolSummary := lo.MapToSlice(nodePoolCounts, func(np string, count int) string {
+		return fmt.Sprintf("%s:%d", np, count)
+	})
 	candidateNames := lo.Map(candidates, func(cn *Candidate, _ int) string { return cn.Name() })
 	log.FromContext(ctx).Info("computeConsolidation started",
 		"candidateCount", len(candidates),
+		"candidateNodePools", nodePoolSummary,
 		"candidates", candidateNames)
 
 	var err error

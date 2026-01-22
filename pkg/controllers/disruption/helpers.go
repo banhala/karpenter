@@ -59,9 +59,19 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		return !candidateNames.Has(n.Name())
 	})
 
+	// Build NodePool summary for candidates
+	nodePoolCounts := make(map[string]int)
+	for _, c := range candidates {
+		nodePoolCounts[c.NodePool.Name]++
+	}
+	nodePoolSummary := lo.MapToSlice(nodePoolCounts, func(np string, count int) string {
+		return fmt.Sprintf("%s:%d", np, count)
+	})
+
 	// Verbose logging for simulation debugging
 	log.FromContext(ctx).Info("SimulateScheduling started",
 		"candidateCount", len(candidates),
+		"candidateNodePools", nodePoolSummary,
 		"candidateNames", candidateNames.UnsortedList(),
 		"totalNodes", len(nodes),
 		"activeNodes", len(stateNodes),
@@ -153,6 +163,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		})
 		log.FromContext(ctx).Info("NewNodeClaim details",
 			"index", i,
+			"candidateNodePools", nodePoolSummary,
 			"podCount", len(nc.Pods),
 			"pods", podNames,
 			"topInstanceTypes", instanceTypeNames,

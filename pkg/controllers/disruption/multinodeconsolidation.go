@@ -158,9 +158,19 @@ func (m *MultiNodeConsolidation) firstNConsolidationOption(ctx context.Context, 
 		mid := (min + max) / 2
 		candidatesToConsolidate := candidates[0 : mid+1]
 
+		// Build NodePool summary for this batch
+		nodePoolCounts := make(map[string]int)
+		for _, c := range candidatesToConsolidate {
+			nodePoolCounts[c.NodePool.Name]++
+		}
+		nodePoolSummary := lo.MapToSlice(nodePoolCounts, func(np string, count int) string {
+			return fmt.Sprintf("%s:%d", np, count)
+		})
+
 		log.FromContext(ctx).Info("MultiNodeConsolidation: binary search iteration",
 			"min", min, "max", max, "mid", mid,
-			"candidatesToConsolidate", len(candidatesToConsolidate))
+			"candidatesToConsolidate", len(candidatesToConsolidate),
+			"nodePoolsInBatch", nodePoolSummary)
 
 		// Pass the timeout context to ensure sub-operations can be canceled
 		cmd, err := m.computeConsolidation(timeoutCtx, candidatesToConsolidate...)
@@ -193,12 +203,14 @@ func (m *MultiNodeConsolidation) firstNConsolidationOption(ctx context.Context, 
 			log.FromContext(ctx).Info("MultiNodeConsolidation: valid consolidation found",
 				"decision", cmd.Decision(),
 				"candidateCount", len(candidatesToConsolidate),
+				"nodePoolsInBatch", nodePoolSummary,
 				"replacements", len(cmd.Replacements))
 			lastSavedCommand = cmd
 			min = mid + 1
 		} else {
 			log.FromContext(ctx).Info("MultiNodeConsolidation: consolidation not valid, reducing batch",
-				"decision", cmd.Decision())
+				"decision", cmd.Decision(),
+				"nodePoolsInBatch", nodePoolSummary)
 			max = mid - 1
 		}
 	}
