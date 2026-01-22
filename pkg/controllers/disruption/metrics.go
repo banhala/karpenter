@@ -58,6 +58,16 @@ var (
 		},
 		[]string{decisionLabel, metrics.ReasonLabel, ConsolidationTypeLabel},
 	)
+	ConsolidationSkippedTotal = opmetrics.NewPrometheusCounter(
+		crmetrics.Registry,
+		prometheus.CounterOpts{
+			Namespace: metrics.Namespace,
+			Subsystem: voluntaryDisruptionSubsystem,
+			Name:      "consolidation_skipped_total",
+			Help:      "Number of times consolidation was skipped. Labeled by reason and consolidation type.",
+		},
+		[]string{metrics.ReasonLabel, ConsolidationTypeLabel},
+	)
 	EligibleNodes = opmetrics.NewPrometheusGauge(
 		crmetrics.Registry,
 		prometheus.GaugeOpts{
@@ -85,6 +95,16 @@ var (
 			Subsystem: voluntaryDisruptionSubsystem,
 			Name:      "failed_validations_total",
 			Help:      "Number of candidates that were selected for disruption but failed validation. Labeled by consolidation type.",
+		},
+		[]string{ConsolidationTypeLabel},
+	)
+	FailedValidationsCommandTotal = opmetrics.NewPrometheusCounter(
+		crmetrics.Registry,
+		prometheus.CounterOpts{
+			Namespace: metrics.Namespace,
+			Subsystem: voluntaryDisruptionSubsystem,
+			Name:      "failed_validations_command_total",
+			Help:      "Number of command validations that failed. Labeled by consolidation type.",
 		},
 		[]string{ConsolidationTypeLabel},
 	)

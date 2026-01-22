@@ -49,7 +49,12 @@ func NewMultiNodeConsolidation(c consolidation, opts ...option.Function[MethodOp
 }
 
 func (m *MultiNodeConsolidation) ComputeCommand(ctx context.Context, disruptionBudgetMapping map[string]int, candidates ...*Candidate) (Command, error) {
+	log.FromContext(ctx).Info("MultiNodeConsolidation.ComputeCommand started",
+		"totalCandidates", len(candidates),
+		"budgetMapping", disruptionBudgetMapping)
+
 	if m.IsConsolidated() {
+		log.FromContext(ctx).Info("MultiNodeConsolidation: already consolidated, skipping")
 		return Command{}, nil
 	}
 	candidates = m.sortCandidates(candidates)
@@ -85,6 +90,28 @@ func (m *MultiNodeConsolidation) ComputeCommand(ctx context.Context, disruptionB
 	// This could be further configurable in the future.
 	maxParallel := lo.Clamp(len(disruptableCandidates), 0, 100)
 
+	log.FromContext(ctx).Info("MultiNodeConsolidation: filtered candidates",
+		"disruptableCandidates", len(disruptableCandidates),
+		"constrainedByBudgets", constrainedByBudgets,
+		"maxParallel", maxParallel)
+
+	// Log candidate details
+	for i, c := range disruptableCandidates {
+		if i < 20 { // Only log first 20 to avoid spam
+			log.FromContext(ctx).Info("MultiNodeConsolidation candidate",
+				"nodePool", c.NodePool.Name,
+				"index", i,
+				"node", c.Name(),
+				"instanceType", c.instanceType.Name,
+				"pods", len(c.reschedulablePods),
+				"disruptionCost", c.DisruptionCost)
+		}
+	}
+	if len(disruptableCandidates) > 20 {
+		log.FromContext(ctx).Info("MultiNodeConsolidation: ... and more candidates",
+			"remaining", len(disruptableCandidates)-20)
+	}
+
 	cmd, err := m.firstNConsolidationOption(ctx, disruptableCandidates, maxParallel)
 	if err != nil {
 		return Command{}, err
@@ -102,7 +129,7 @@ func (m *MultiNodeConsolidation) ComputeCommand(ctx context.Context, disruptionB
 
 	if cmd, err = m.validator.Validate(ctx, cmd, consolidationTTL); err != nil {
 		if IsValidationError(err) {
-			log.FromContext(ctx).V(1).WithValues(cmd.LogValues()...).Info("abandoning multi-node consolidation attempt due to pod churn, command is no longer valid")
+			log.FromContext(ctx).WithValues(cmd.LogValues()...).Info("abandoning multi-node consolidation attempt due to pod churn, command is no longer valid")
 			return Command{}, nil
 		}
 		return Command{}, fmt.Errorf("validating consolidation, %w", err)
@@ -131,6 +158,20 @@ func (m *MultiNodeConsolidation) firstNConsolidationOption(ctx context.Context, 
 		mid := (min + max) / 2
 		candidatesToConsolidate := candidates[0 : mid+1]
 
+		// Build NodePool summary for this batch
+		nodePoolCounts := make(map[string]int)
+		for _, c := range candidatesToConsolidate {
+			nodePoolCounts[c.NodePool.Name]++
+		}
+		nodePoolSummary := lo.MapToSlice(nodePoolCounts, func(np string, count int) string {
+			return fmt.Sprintf("%s:%d", np, count)
+		})
+
+		log.FromContext(ctx).Info("MultiNodeConsolidation: binary search iteration",
+			"min", min, "max", max, "mid", mid,
+			"candidatesToConsolidate", len(candidatesToConsolidate),
+			"nodePoolsInBatch", nodePoolSummary)
+
 		// Pass the timeout context to ensure sub-operations can be canceled
 		cmd, err := m.computeConsolidation(timeoutCtx, candidatesToConsolidate...)
 		// context deadline exceeded will return to the top of the loop and either return nothing or the last saved command
@@ -138,10 +179,10 @@ func (m *MultiNodeConsolidation) firstNConsolidationOption(ctx context.Context, 
 			if errors.Is(err, context.DeadlineExceeded) {
 				ConsolidationTimeoutsTotal.Inc(map[string]string{ConsolidationTypeLabel: m.ConsolidationType()})
 				if lastSavedCommand.Candidates == nil {
-					log.FromContext(ctx).V(1).Info(fmt.Sprintf("failed to find a multi-node consolidation after timeout, last considered batch had %d", (min+max)/2))
+					log.FromContext(ctx).Info(fmt.Sprintf("failed to find a multi-node consolidation after timeout, last considered batch had %d", (min+max)/2))
 					return Command{}, nil
 				}
-				log.FromContext(ctx).V(1).WithValues(lastSavedCommand.LogValues()...).Info("stopping multi-node consolidation after timeout, returning last valid command")
+				log.FromContext(ctx).WithValues(lastSavedCommand.LogValues()...).Info("stopping multi-node consolidation after timeout, returning last valid command")
 				return lastSavedCommand, nil
 
 			}
@@ -159,12 +200,23 @@ func (m *MultiNodeConsolidation) firstNConsolidationOption(ctx context.Context, 
 		}
 		if validDecision {
 			// We can consolidate NodeClaims [0,mid]
+			log.FromContext(ctx).Info("MultiNodeConsolidation: valid consolidation found",
+				"decision", cmd.Decision(),
+				"candidateCount", len(candidatesToConsolidate),
+				"nodePoolsInBatch", nodePoolSummary,
+				"replacements", len(cmd.Replacements))
 			lastSavedCommand = cmd
 			min = mid + 1
 		} else {
+			log.FromContext(ctx).Info("MultiNodeConsolidation: consolidation not valid, reducing batch",
+				"decision", cmd.Decision(),
+				"nodePoolsInBatch", nodePoolSummary)
 			max = mid - 1
 		}
 	}
+	log.FromContext(ctx).Info("MultiNodeConsolidation: binary search complete",
+		"foundCommand", lastSavedCommand.Candidates != nil,
+		"candidatesInCommand", len(lastSavedCommand.Candidates))
 	return lastSavedCommand, nil
 }
 

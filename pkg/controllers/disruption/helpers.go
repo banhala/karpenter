@@ -59,6 +59,24 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		return !candidateNames.Has(n.Name())
 	})
 
+	// Build NodePool summary for candidates
+	nodePoolCounts := make(map[string]int)
+	for _, c := range candidates {
+		nodePoolCounts[c.NodePool.Name]++
+	}
+	nodePoolSummary := lo.MapToSlice(nodePoolCounts, func(np string, count int) string {
+		return fmt.Sprintf("%s:%d", np, count)
+	})
+
+	// Verbose logging for simulation debugging
+	log.FromContext(ctx).Info("SimulateScheduling started",
+		"candidateCount", len(candidates),
+		"candidateNodePools", nodePoolSummary,
+		"candidateNames", candidateNames.UnsortedList(),
+		"totalNodes", len(nodes),
+		"activeNodes", len(stateNodes),
+		"deletingNodes", len(deletingNodes))
+
 	// We do one final check to ensure that the node that we are attempting to consolidate isn't
 	// already handled for deletion by some other controller. This could happen if the node was markedForDeletion
 	// between returning the candidates and getting the stateNodes above
@@ -73,6 +91,7 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 	if err != nil {
 		return scheduling.Results{}, fmt.Errorf("determining pending pods, %w", err)
 	}
+	log.FromContext(ctx).Info("GetPendingPods completed", "pendingPodCount", len(pods))
 
 	// Don't provision capacity for pods which will not get evicted due to fully blocking PDBs.
 	// Since Karpenter doesn't know when these pods will be successfully evicted, spinning up capacity until
@@ -85,6 +104,11 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		currentlyReschedulablePods := lo.Filter(n.reschedulablePods, func(p *corev1.Pod, _ int) bool {
 			return pdbs.IsCurrentlyReschedulable(p)
 		})
+		log.FromContext(ctx).Info("Candidate pods to reschedule",
+			"nodePool", n.NodePool.Name,
+			"candidate", n.Name(),
+			"totalPods", len(n.reschedulablePods),
+			"reschedulablePods", len(currentlyReschedulablePods))
 		pods = append(pods, currentlyReschedulablePods...)
 	}
 
@@ -114,11 +138,37 @@ func SimulateScheduling(ctx context.Context, kubeClient client.Client, cluster *
 		return client.ObjectKeyFromObject(p), nil
 	})
 
+	log.FromContext(ctx).Info("Running scheduler.Solve",
+		"totalPodsToSchedule", len(pods),
+		"availableNodes", len(stateNodes))
+
 	results, err := scheduler.Solve(log.IntoContext(ctx, operatorlogging.NopLogger), pods)
 	if err != nil {
 		return scheduling.Results{}, fmt.Errorf("scheduling pods, %w", err)
 	}
 	results = results.TruncateInstanceTypes(ctx, scheduling.MaxInstanceTypes)
+
+	log.FromContext(ctx).Info("Scheduler.Solve completed",
+		"newNodeClaimsNeeded", len(results.NewNodeClaims),
+		"existingNodesUsed", len(results.ExistingNodes),
+		"podErrors", len(results.PodErrors))
+
+	// Log detailed info about each new NodeClaim and which pods require it
+	for i, nc := range results.NewNodeClaims {
+		podNames := lo.Map(nc.Pods, func(p *corev1.Pod, _ int) string {
+			return fmt.Sprintf("%s/%s", p.Namespace, p.Name)
+		})
+		instanceTypeNames := lo.Map(nc.InstanceTypeOptions[:min(5, len(nc.InstanceTypeOptions))], func(it *cloudprovider.InstanceType, _ int) string {
+			return it.Name
+		})
+		log.FromContext(ctx).Info("NewNodeClaim details",
+			"index", i,
+			"candidateNodePools", nodePoolSummary,
+			"podCount", len(nc.Pods),
+			"pods", podNames,
+			"topInstanceTypes", instanceTypeNames,
+			"totalInstanceTypeOptions", len(nc.InstanceTypeOptions))
+	}
 	for _, n := range results.ExistingNodes {
 		// We consider existing nodes for scheduling. When these nodes are unmanaged, their taint logic should
 		// tell us if we can schedule to them or not; however, if these nodes are managed, we will still schedule to them

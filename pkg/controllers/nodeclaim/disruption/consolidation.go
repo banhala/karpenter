@@ -42,7 +42,7 @@ func (c *Consolidation) Reconcile(ctx context.Context, nodePool *v1.NodePool, no
 	if nodePool.Spec.Disruption.ConsolidateAfter.Duration == nil {
 		if hasConsolidatableCondition {
 			_ = nodeClaim.StatusConditions().Clear(v1.ConditionTypeConsolidatable)
-			log.FromContext(ctx).V(1).Info("removing consolidatable status condition, consolidation is disabled")
+			log.FromContext(ctx).Info("removing consolidatable status condition, consolidation is disabled")
 		}
 		return reconcile.Result{}, nil
 	}
@@ -51,7 +51,7 @@ func (c *Consolidation) Reconcile(ctx context.Context, nodePool *v1.NodePool, no
 	if !initialized.IsTrue() {
 		if hasConsolidatableCondition {
 			_ = nodeClaim.StatusConditions().Clear(v1.ConditionTypeConsolidatable)
-			log.FromContext(ctx).V(1).Info("removing consolidatable status condition, isn't initialized")
+			log.FromContext(ctx).Info("removing consolidatable status condition, isn't initialized")
 		}
 		return reconcile.Result{}, nil
 	}
@@ -63,7 +63,7 @@ func (c *Consolidation) Reconcile(ctx context.Context, nodePool *v1.NodePool, no
 	if c.clock.Since(timeToCheck) < lo.FromPtr(nodePool.Spec.Disruption.ConsolidateAfter.Duration) {
 		if hasConsolidatableCondition {
 			_ = nodeClaim.StatusConditions().Clear(v1.ConditionTypeConsolidatable)
-			log.FromContext(ctx).V(1).Info("removing consolidatable status condition")
+			log.FromContext(ctx).Info("removing consolidatable status condition")
 		}
 		consolidatableTime := timeToCheck.Add(lo.FromPtr(nodePool.Spec.Disruption.ConsolidateAfter.Duration))
 		return reconcile.Result{RequeueAfter: consolidatableTime.Sub(c.clock.Now())}, nil
@@ -72,7 +72,7 @@ func (c *Consolidation) Reconcile(ctx context.Context, nodePool *v1.NodePool, no
 	// 6. Otherwise, add the consolidatable status condition
 	nodeClaim.StatusConditions().SetTrue(v1.ConditionTypeConsolidatable)
 	if !hasConsolidatableCondition {
-		log.FromContext(ctx).V(1).Info("marking consolidatable")
+		log.FromContext(ctx).Info("marking consolidatable")
 	}
 	return reconcile.Result{}, nil
 }

@@ -54,7 +54,12 @@ func NewSingleNodeConsolidation(c consolidation, opts ...option.Function[MethodO
 // ComputeCommand generates a disruption command given candidates
 // nolint:gocyclo
 func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruptionBudgetMapping map[string]int, candidates ...*Candidate) (Command, error) {
+	log.FromContext(ctx).Info("SingleNodeConsolidation.ComputeCommand started",
+		"totalCandidates", len(candidates),
+		"budgetMapping", disruptionBudgetMapping)
+
 	if s.IsConsolidated() {
+		log.FromContext(ctx).Info("SingleNodeConsolidation: already consolidated, skipping")
 		return Command{}, nil
 	}
 	candidates = s.SortCandidates(ctx, candidates)
@@ -68,7 +73,7 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 	for i, candidate := range candidates {
 		if s.clock.Now().After(timeout) {
 			ConsolidationTimeoutsTotal.Inc(map[string]string{ConsolidationTypeLabel: s.ConsolidationType()})
-			log.FromContext(ctx).V(1).Info(fmt.Sprintf("abandoning single-node consolidation due to timeout after evaluating %d candidates", i))
+			log.FromContext(ctx).Info(fmt.Sprintf("abandoning single-node consolidation due to timeout after evaluating %d candidates", i))
 
 			s.PreviouslyUnseenNodePools = unseenNodePools
 
@@ -88,8 +93,19 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 		// assume that it was due to budgets. If we don't filter out budgets, users who set a budget for `empty`
 		// can find their nodes disrupted here.
 		if len(candidate.reschedulablePods) == 0 {
+			log.FromContext(ctx).Info("SingleNodeConsolidation: skipping empty candidate",
+				"nodePool", candidate.NodePool.Name,
+				"candidate", candidate.Name())
 			continue
 		}
+
+		log.FromContext(ctx).Info("SingleNodeConsolidation: evaluating candidate",
+			"nodePool", candidate.NodePool.Name,
+			"index", i,
+			"candidate", candidate.Name(),
+			"instanceType", candidate.instanceType.Name,
+			"pods", len(candidate.reschedulablePods),
+			"disruptionCost", candidate.DisruptionCost)
 
 		// compute a possible consolidation option
 		cmd, err := s.computeConsolidation(ctx, candidate)
@@ -98,11 +114,20 @@ func (s *SingleNodeConsolidation) ComputeCommand(ctx context.Context, disruption
 			continue
 		}
 		if cmd.Decision() == NoOpDecision {
+			log.FromContext(ctx).Info("SingleNodeConsolidation: NoOp decision for candidate",
+				"nodePool", candidate.NodePool.Name,
+				"candidate", candidate.Name())
 			continue
 		}
+
+		log.FromContext(ctx).Info("SingleNodeConsolidation: found consolidation option",
+			"nodePool", candidate.NodePool.Name,
+			"candidate", candidate.Name(),
+			"decision", cmd.Decision(),
+			"replacements", len(cmd.Replacements))
 		if _, err = s.validator.Validate(ctx, cmd, consolidationTTL); err != nil {
 			if IsValidationError(err) {
-				log.FromContext(ctx).V(1).WithValues(cmd.LogValues()...).Info("abandoning single-node consolidation attempt due to pod churn, command is no longer valid")
+				log.FromContext(ctx).WithValues(cmd.LogValues()...).Info("abandoning single-node consolidation attempt due to pod churn, command is no longer valid")
 				return Command{}, nil
 			}
 			return Command{}, fmt.Errorf("validating consolidation, %w", err)
@@ -150,7 +175,7 @@ func (s *SingleNodeConsolidation) shuffleCandidates(ctx context.Context, nodePoo
 	var result []*Candidate
 	// Log any timed out nodepools that we're prioritizing
 	if s.PreviouslyUnseenNodePools.Len() != 0 {
-		log.FromContext(ctx).V(1).Info(fmt.Sprintf("prioritizing nodepools that have not yet been considered due to timeouts in previous runs: %s", strings.Join(s.PreviouslyUnseenNodePools.UnsortedList(), ", ")))
+		log.FromContext(ctx).Info(fmt.Sprintf("prioritizing nodepools that have not yet been considered due to timeouts in previous runs: %s", strings.Join(s.PreviouslyUnseenNodePools.UnsortedList(), ", ")))
 	}
 	sortedNodePools := s.PreviouslyUnseenNodePools.UnsortedList()
 	sortedNodePools = append(sortedNodePools, lo.Filter(lo.Keys(nodePoolCandidates), func(nodePoolName string, _ int) bool {
