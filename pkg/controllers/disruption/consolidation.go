@@ -30,6 +30,7 @@ import (
 	"sigs.k8s.io/controller-runtime/pkg/client"
 	"sigs.k8s.io/controller-runtime/pkg/log"
 
+	"sigs.k8s.io/karpenter/pkg/metrics"
 	"sigs.k8s.io/karpenter/pkg/utils/pretty"
 
 	v1 "sigs.k8s.io/karpenter/pkg/apis/v1"
@@ -164,7 +165,10 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 			"errorSummary", results.NonPendingPodSchedulingErrors())
 		// This method is used by multi-node consolidation as well, so we'll only report in the single node case
 		if len(candidates) == 1 {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: SingleNodeConsolidationType, metrics.ReasonLabel: "PodsNotSchedulable"})
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, pretty.Sentence(results.NonPendingPodSchedulingErrors()))...)
+		} else {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: MultiNodeConsolidationType, metrics.ReasonLabel: "PodsNotSchedulable"})
 		}
 		return Command{}, nil
 	}
@@ -184,7 +188,10 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 		log.FromContext(ctx).Info("computeConsolidation: cannot consolidate (would create multiple nodes)",
 			"newNodeClaimsNeeded", len(results.NewNodeClaims))
 		if len(candidates) == 1 {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: SingleNodeConsolidationType, metrics.ReasonLabel: "MultipleNodesNeeded"})
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, fmt.Sprintf("Can't remove without creating %d candidates", len(results.NewNodeClaims)))...)
+		} else {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: MultiNodeConsolidationType, metrics.ReasonLabel: "MultipleNodesNeeded"})
 		}
 		return Command{}, nil
 	}
@@ -227,7 +234,10 @@ func (c *consolidation) computeConsolidation(ctx context.Context, candidates ...
 		log.FromContext(ctx).Info("computeConsolidation: no cheaper replacement found",
 			"candidatePrice", candidatePrice)
 		if len(candidates) == 1 {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: SingleNodeConsolidationType, metrics.ReasonLabel: "NoCheaperReplacement"})
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, "Can't replace with a cheaper node")...)
+		} else {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: MultiNodeConsolidationType, metrics.ReasonLabel: "NoCheaperReplacement"})
 		}
 		return Command{}, nil
 	}
@@ -270,7 +280,10 @@ func (c *consolidation) computeSpotToSpotConsolidation(ctx context.Context, cand
 	// Spot consolidation is turned off.
 	if !options.FromContext(ctx).FeatureGates.SpotToSpotConsolidation {
 		if len(candidates) == 1 {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: SingleNodeConsolidationType, metrics.ReasonLabel: "SpotToSpotConsolidationDisabled"})
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, "SpotToSpotConsolidation is disabled, can't replace a spot node with a spot node")...)
+		} else {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: MultiNodeConsolidationType, metrics.ReasonLabel: "SpotToSpotConsolidationDisabled"})
 		}
 		return Command{}, nil
 	}
@@ -291,7 +304,10 @@ func (c *consolidation) computeSpotToSpotConsolidation(ctx context.Context, cand
 	}
 	if len(results.NewNodeClaims[0].InstanceTypeOptions) == 0 {
 		if len(candidates) == 1 {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: SingleNodeConsolidationType, metrics.ReasonLabel: "NoCheaperReplacement"})
 			c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, "Can't replace with a cheaper node")...)
+		} else {
+			ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: MultiNodeConsolidationType, metrics.ReasonLabel: "NoCheaperReplacement"})
 		}
 		return Command{}, nil
 	}
@@ -312,6 +328,7 @@ func (c *consolidation) computeSpotToSpotConsolidation(ctx context.Context, cand
 	//   1) The current candidate is not in the set of the 15 cheapest instance types and
 	//   2) There were at least 15 options cheaper than the current candidate.
 	if len(results.NewNodeClaims[0].InstanceTypeOptions) < MinInstanceTypesForSpotToSpotConsolidation {
+		ConsolidationSkippedTotal.Inc(map[string]string{ConsolidationTypeLabel: SingleNodeConsolidationType, metrics.ReasonLabel: "InsufficientSpotTypesForSpotToSpot"})
 		c.recorder.Publish(disruptionevents.Unconsolidatable(candidates[0].Node, candidates[0].NodeClaim, fmt.Sprintf("SpotToSpotConsolidation requires %d cheaper instance type options than the current candidate to consolidate, got %d",
 			MinInstanceTypesForSpotToSpotConsolidation, len(results.NewNodeClaims[0].InstanceTypeOptions)))...)
 		return Command{}, nil
